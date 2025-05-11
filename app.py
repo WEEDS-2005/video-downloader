@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, Response
 import yt_dlp
 import os
 import uuid
@@ -26,6 +26,7 @@ def download():
         "format": "bestaudio/best" if media_type == "audio" else "bestvideo+bestaudio/best",
         "outtmpl": filename,
         "quiet": True,
+        "noplaylist": True
     }
 
     if media_type == "audio":
@@ -42,9 +43,20 @@ def download():
             if media_type == "audio":
                 downloaded_file = downloaded_file.rsplit(".", 1)[0] + ".mp3"
 
-        return send_file(downloaded_file, as_attachment=True)
+        def generate():
+            with open(downloaded_file, "rb") as f:
+                yield from f
+            os.remove(downloaded_file)
+
+        return Response(generate(), headers={
+            "Content-Disposition": f"attachment; filename=\\"{os.path.basename(downloaded_file)}\\"",
+            "Content-Type": "application/octet-stream"
+        })
+
+    except yt_dlp.utils.DownloadError:
+        return {"error": "⚠️ The video is unavailable or restricted. Please try another link."}, 500
     except Exception as e:
-        return {"error": str(e)}, 500
+        return {"error": f"Unexpected error: {str(e)}"}, 500
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0")
